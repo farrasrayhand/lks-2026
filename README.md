@@ -149,7 +149,7 @@ php artisan serve --port=8080
 | `FILESYSTEM_DISK` | Upload storage driver | public (s3 untuk AWS) |
 | `AWS_ACCESS_KEY_ID` | AWS access key | (untuk S3 & Lex) |
 | `AWS_SECRET_ACCESS_KEY` | AWS secret key | (untuk S3 & Lex) |
-| `AWS_DEFAULT_REGION` | AWS region | ap-southeast-3 |
+| `AWS_DEFAULT_REGION` | AWS region | ap-southeast-1 |
 | `AWS_BUCKET` | S3 bucket name | (untuk S3) |
 | `AWS_LEX_BOT_ID` | Lex bot ID | (opsional, AI chatbot) |
 | `AWS_LEX_BOT_ALIAS_ID` | Lex bot alias ID | (opsional, AI chatbot) |

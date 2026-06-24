@@ -47,7 +47,7 @@ Panduan lengkap deploy Kaltim Smart Platform ke AWS menggunakan Terraform + lang
 aws configure
 # AWS Access Key ID: AKIA... (dari langkah 2.1)
 # AWS Secret Access Key: ... (dari langkah 2.1)
-# Default region name: ap-southeast-3 (Jakarta)
+# Default region name: ap-southeast-1 (Singapore)
 # Default output format: json
 ```
 
@@ -102,7 +102,7 @@ php artisan jwt:secret --show
 cd terraform
 cat > terraform.tfvars << 'EOF'
 # Region
-aws_region       = "ap-southeast-3"
+aws_region       = "ap-southeast-1"
 
 # Project
 project_name     = "kaltim-smart-platform"
@@ -143,8 +143,8 @@ terraform apply
 
 Tunggu ~10-15 menit sampai selesai. Terraform akan menampilkan output:
 ```
-alb_dns_name = "kaltim-smart-platform-alb-123456.ap-southeast-3.elb.amazonaws.com"
-rds_endpoint = "kaltim-smart-platform-db.xxxx.ap-southeast-3.rds.amazonaws.com:3306"
+alb_dns_name = "kaltim-smart-platform-alb-123456.ap-southeast-1.elb.amazonaws.com"
+rds_endpoint = "kaltim-smart-platform-db.xxxx.ap-southeast-1.rds.amazonaws.com:3306"
 s3_bucket_name = "kaltim-uploads-xxx-2026"
 vpc_id = "vpc-xxx"
 lex_bot_id = "XXX"
@@ -207,7 +207,7 @@ APP_PORT=80
 APP_URL=http://<alb-dns-name>
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
-AWS_DEFAULT_REGION=ap-southeast-3
+AWS_DEFAULT_REGION=ap-southeast-1
 AWS_BUCKET=kaltim-uploads-xxx-2026
 AWS_LEX_BOT_ID=XXX          # dari output terraform
 AWS_LEX_BOT_ALIAS_ID=YYY    # dari output terraform
@@ -649,7 +649,7 @@ Expected Response (401):
 **S3 Block Public Access:**
 ```
 # Buka browser, akses:
-https://<s3-bucket-name>.s3.ap-southeast-3.amazonaws.com/
+https://<s3-bucket-name>.s3.ap-southeast-1.amazonaws.com/
 
 Expected:
 ✅ Access Denied (XML error)

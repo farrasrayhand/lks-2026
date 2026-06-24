@@ -86,7 +86,7 @@ class ChatbotController extends Controller
         try {
             $client = new LexRuntimeServiceClient([
                 'version' => 'latest',
-                'region' => env('AWS_DEFAULT_REGION', 'ap-southeast-3'),
+                'region' => env('AWS_DEFAULT_REGION', 'ap-southeast-1'),
             ]);
 
             $result = $client->recognizeText([
