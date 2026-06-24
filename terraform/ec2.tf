@@ -148,7 +148,7 @@ resource "aws_launch_template" "app" {
     AWS_DEFAULT_REGION=${var.aws_region}
     AWS_BUCKET=${aws_s3_bucket.uploads.bucket}
     AWS_LEX_BOT_ID=${aws_lexv2models_bot.kaltim.id}
-    AWS_LEX_BOT_ALIAS_ID=${aws_lexv2models_bot_alias.prod.bot_alias_id}
+    AWS_LEX_BOT_ALIAS_ID=
     CACHE_STORE=redis
     SESSION_DRIVER=redis
     FILESYSTEM_DISK=s3

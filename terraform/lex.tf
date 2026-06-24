@@ -197,27 +197,25 @@ resource "aws_lexv2models_intent" "fallback" {
 
 # Lex Bot Version
 resource "aws_lexv2models_bot_version" "v1" {
-  bot_id      = aws_lexv2models_bot.kaltim.id
+  bot_id = aws_lexv2models_bot.kaltim.id
   locale_specification = {
     id_ID = {
-      sourceBotVersion = "DRAFT"
+      source_bot_version = "DRAFT"
     }
   }
 }
 
-# Lex Bot Alias (Production)
-resource "aws_lexv2models_bot_alias" "prod" {
-  bot_id       = aws_lexv2models_bot.kaltim.id
-  bot_version  = aws_lexv2models_bot_version.v1.bot_version
-  name         = "prod"
-}
+# Note: aws_lexv2models_bot_alias is not yet supported by the Terraform AWS provider.
+# After terraform apply, go to AWS Console → Amazon Lex → KaltimServiceBot
+# → Build → Deploy → Create alias "prod" → copy the Alias ID.
+# Then update AWS_LEX_BOT_ALIAS_ID in docker/.env on EC2.
 
 output "lex_bot_id" {
   description = "Lex Bot ID"
   value       = aws_lexv2models_bot.kaltim.id
 }
 
-output "lex_bot_alias_id" {
-  description = "Lex Bot Alias ID"
-  value       = aws_lexv2models_bot_alias.prod.bot_alias_id
+output "lex_bot_version" {
+  description = "Lex Bot Version (use this when creating alias in console)"
+  value       = aws_lexv2models_bot_version.v1.bot_version
 }

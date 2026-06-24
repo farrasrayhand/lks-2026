@@ -79,175 +79,136 @@ chmod 400 ~/.ssh/kaltim-key.pem
 
 ## 3. Deploy dengan Terraform
 
-### Langkah 1 — Siapkan APP_KEY dan JWT_SECRET
+### Langkah 1 — Buat File `terraform.tfvars`
 
-Jalankan ini di laptop kamu (bukan di EC2):
+Buat file ini di folder `terraform/` (tidak perlu di-commit, sudah ada di `.gitignore`):
 
-```bash
-cd lks-kaltim-2026-[kode-peserta]
-
-# Generate APP_KEY
-php artisan key:generate --show
-# Catat hasilnya: base64:xxxxx
-
-# Generate JWT Secret
-php artisan jwt:secret --show
-# Catat hasilnya: xxxxx
+```
+terraform/terraform.tfvars
 ```
 
-### Langkah 2 — Buat File Konfigurasi Terraform
+Isi dengan nilai berikut:
+
+```
+aws_region      = "ap-southeast-1"
+project_name    = "kaltim-smart-platform"
+environment     = "production"
+key_name        = "kaltim-smart-key"
+instance_type   = "t3.medium"
+db_username     = "kaltim_admin"
+db_password     = "K4lt1m#Secure2026!"
+db_name         = "kaltim_smart_platform"
+app_key         = "base64:..."    ← ambil dari docker/.env (APP_KEY)
+jwt_secret      = "..."           ← ambil dari docker/.env (JWT_SECRET)
+s3_bucket_name  = "kaltim-uploads-[kode-peserta]-2026"
+github_repo_url = "https://github.com/[username]/lks-kaltim-2026-[kode-peserta].git"
+```
+
+> ⚠️ Nilai `app_key` dan `jwt_secret` sudah ada di file `docker/.env` — tinggal copy.
+
+### Langkah 2 — Jalankan Terraform
 
 ```bash
 cd terraform
 
-cat > terraform.tfvars << 'EOF'
-aws_region     = "ap-southeast-1"
-project_name   = "kaltim-smart-platform"
-environment    = "production"
-key_name       = "kaltim-key"
-instance_type  = "t3.medium"
-db_username    = "kaltim_admin"
-db_password    = "K4lt1m#Secure2026!"
-db_name        = "kaltim_smart_platform"
-app_key        = "base64:..."         # ganti dengan hasil langkah 1
-jwt_secret     = "..."                # ganti dengan hasil langkah 1
-s3_bucket_name = "kaltim-uploads-[kode-peserta]-2026"
-EOF
-```
-
-> ⚠️ Ganti nilai `app_key`, `jwt_secret`, dan `s3_bucket_name` sebelum lanjut!
-
-### Langkah 3 — Jalankan Terraform
-
-```bash
 terraform init
 
-terraform plan   # preview — pastikan tidak ada error
+terraform plan   # pastikan tidak ada error sebelum lanjut
 
-terraform apply  # ketik "yes" saat diminta
+terraform apply  # ketik "yes" saat diminta konfirmasi
 ```
 
-Tunggu **10–15 menit**. Setelah selesai, catat output-nya:
+Tunggu **15–20 menit** (RDS yang paling lama). Setelah selesai, jalankan:
 
 ```bash
-terraform output > outputs.txt
-cat outputs.txt
+terraform output
 ```
 
-Output yang penting:
-- `alb_dns_name` — URL aplikasi kamu
+Catat output ini — akan dipakai di langkah selanjutnya:
+- `alb_dns_name` — URL aplikasi kamu (akses lewat browser)
 - `rds_endpoint` — endpoint database
 - `s3_bucket_name` — nama bucket S3
-- `lex_bot_id` dan `lex_bot_alias_id` — untuk chatbot
+- `lex_bot_id` dan `lex_bot_version` — untuk setup Lex di langkah 5
 
 ---
 
-## 4. Setup Aplikasi di EC2
+## 4. Verifikasi EC2 via AWS Console
 
-### Langkah 1 — Masuk ke EC2
+> Semua setup di EC2 sudah **otomatis** — Terraform mengatur git clone, Docker, dan `.env` saat instance pertama boot. Kamu tidak perlu SSH manual.
 
-```bash
-# Cari instance ID
-aws ec2 describe-instances \
-  --filters "Name=tag:Name,Values=kaltim-smart-platform-instance" \
-  --query "Reservations[0].Instances[0].InstanceId" --output text
+### Langkah 1 — Cek Status Instance
 
-# Connect via SSM (tanpa perlu public IP)
-aws ssm start-session --target i-xxxxxxxxxxxxx
-```
+1. Buka **AWS Console → EC2 → Instances**
+2. Cari instance bernama `kaltim-smart-platform-instance`
+3. Tunggu status **Running** dan **2/2 checks passed**
 
-### Langkah 2 — Install Docker dan Clone Repo
+### Langkah 2 — Akses Terminal via Session Manager (tanpa SSH)
 
-```bash
-sudo yum update -y
-sudo yum install -y git docker
-sudo systemctl enable docker && sudo systemctl start docker
-sudo usermod -aG docker ec2-user
+1. Klik instance → klik **Connect** (tombol di atas)
+2. Pilih tab **Session Manager** → klik **Connect**
+3. Browser akan membuka terminal langsung
 
-# Clone repo
-git clone https://github.com/[username]/lks-kaltim-2026-[kode-peserta].git /opt/kaltim-app
-cd /opt/kaltim-app/docker
-```
-
-### Langkah 3 — Buat File .env
+Di dalam terminal:
 
 ```bash
-cat > .env << 'EOF'
-APP_KEY=base64:...               # sama dengan terraform.tfvars
-JWT_SECRET=...                   # sama dengan terraform.tfvars
-DB_DATABASE=kaltim_smart_platform
-DB_USERNAME=kaltim_admin
-DB_PASSWORD=K4lt1m#Secure2026!
-DB_ROOT_PASSWORD=root_secret_123
-APP_PORT=80
-APP_URL=http://<alb-dns-name>    # ganti dengan ALB DNS dari terraform output
-AWS_ACCESS_KEY_ID=AKIA...
-AWS_SECRET_ACCESS_KEY=...
-AWS_DEFAULT_REGION=ap-southeast-1
-AWS_BUCKET=kaltim-uploads-[kode-peserta]-2026
-AWS_LEX_BOT_ID=...               # dari terraform output
-AWS_LEX_BOT_ALIAS_ID=...         # dari terraform output
-CACHE_STORE=redis
-SESSION_DRIVER=redis
-FILESYSTEM_DISK=s3
-EOF
+cd /opt/kaltim-app
+
+# Cek apakah Docker sudah jalan
+sudo docker compose -f docker/docker-compose.yml ps
+
+# Lihat log aplikasi
+sudo docker compose -f docker/docker-compose.yml logs app --tail=30
 ```
 
-### Langkah 4 — Jalankan Aplikasi
+> Jika `kaltim-app` statusnya `Up`, deployment berhasil.
 
-```bash
-docker compose up -d --build
+### Langkah 3 — Cek Health Check
 
-# Cek status
-docker compose ps
-docker compose logs app --tail=20
-```
+Buka browser: `http://<alb-dns-name>/health`
+
+Harus tampil: **All Systems Operational** dengan status database, cache, dan storage OK.
 
 ---
 
 ## 5. Setup Amazon Lex (Chatbot)
 
-### Langkah 1 — Buat Bot di AWS Console
+> Bot, locale, dan semua intent sudah dibuat otomatis oleh Terraform. Yang perlu dilakukan manual hanya **Build** dan **buat alias** — 5 menit via AWS Console.
 
-1. Buka **AWS Console → Amazon Lex → Create bot**
-2. Pilih **Create a blank bot**
-3. Nama: `KaltimServiceBot`
-4. IAM: **Create a role with basic Amazon Lex permissions**
-5. Children's Privacy: **No** → Idle timeout: **5 menit** → **Next**
-6. Language: **Indonesian (id_ID)** → **Done**
+### Langkah 1 — Build Bot
 
-### Langkah 2 — Tambahkan Intent
+1. Buka **AWS Console → Amazon Lex → Bots**
+2. Klik bot **kaltim-smart-platform-chatbot**
+3. Pilih language **Indonesian (id_ID)**
+4. Klik tombol **Build** → tunggu ~2 menit hingga status **Built**
 
-Klik **Add intent** untuk setiap baris berikut:
+### Langkah 2 — Buat Versi dan Alias
 
-| Intent | Contoh Ucapan | Respons Bot |
-|---|---|---|
-| GreetingIntent | "halo", "selamat pagi", "hai" | "Halo! Ada yang bisa saya bantu?" |
-| KTPIntent | "cara buat KTP", "syarat e-KTP" | "Untuk membuat KTP: daftar akun → pilih Layanan → Pembuatan KTP..." |
-| KKIntent | "buat kartu keluarga", "syarat KK" | "KK bisa diajukan online. Estimasi 7 hari kerja..." |
-| LaporIntent | "lapor jalan rusak", "aduan sampah" | "Laporkan di menu Laporan Warga, pilih kategori..." |
+1. Di halaman bot, klik **Bot versions** → **Create version** → konfirmasi
+2. Klik **Deployment → Aliases → Create alias**
+3. Alias name: `prod`
+4. Bot version: pilih versi yang baru dibuat → **Create**
 
-### Langkah 3 — Build dan Deploy
+### Langkah 3 — Ambil Alias ID
 
-1. Klik **Build** (tunggu ~2 menit)
-2. Klik **Deploy → Create alias**, nama: `prod`
+1. Klik alias `prod` yang baru dibuat
+2. Catat **Alias ID** yang tertera (format: `XXXXXXXXXX`)
 
-### Langkah 4 — Ambil Bot ID dan Alias ID
+### Langkah 4 — Update .env di EC2
 
-1. Kembali ke daftar bot → klik `KaltimServiceBot`
-2. **Bot ID** ada di pojok kanan atas
-3. Klik **Aliases → prod** → **Alias ID** di pojok kanan atas
-
-### Langkah 5 — Update .env di EC2
+Kembali ke Session Manager (Langkah 4.2), lalu:
 
 ```bash
-cd /opt/kaltim-app/docker
-# Edit .env, update dua baris ini:
-# AWS_LEX_BOT_ID=...
-# AWS_LEX_BOT_ALIAS_ID=...
+cd /opt/kaltim-app
 
-docker compose up -d --build
+# Edit .env
+sudo nano docker/.env
+# Cari baris AWS_LEX_BOT_ALIAS_ID= dan isi dengan Alias ID dari langkah di atas
+
+# Restart app
+sudo docker compose -f docker/docker-compose.yml up -d --force-recreate app
 ```
+
+Selesai — chatbot sudah aktif menggunakan Amazon Lex.
 
 ---
 
