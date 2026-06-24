@@ -50,6 +50,7 @@ resource "aws_lexv2models_bot_locale" "id" {
 
 # Intent - Greeting
 resource "aws_lexv2models_intent" "greeting" {
+  depends_on  = [aws_lexv2models_bot_locale.id]
   bot_id      = aws_lexv2models_bot.kaltim.id
   bot_version = "DRAFT"
   locale_id   = "en_US"
@@ -90,6 +91,7 @@ resource "aws_lexv2models_intent" "greeting" {
 
 # Intent - Pembuatan KTP
 resource "aws_lexv2models_intent" "ktp" {
+  depends_on  = [aws_lexv2models_bot_locale.id]
   bot_id      = aws_lexv2models_bot.kaltim.id
   bot_version = "DRAFT"
   locale_id   = "en_US"
@@ -117,6 +119,7 @@ resource "aws_lexv2models_intent" "ktp" {
 
 # Intent - Kartu Keluarga
 resource "aws_lexv2models_intent" "kk" {
+  depends_on  = [aws_lexv2models_bot_locale.id]
   bot_id      = aws_lexv2models_bot.kaltim.id
   bot_version = "DRAFT"
   locale_id   = "en_US"
@@ -143,6 +146,7 @@ resource "aws_lexv2models_intent" "kk" {
 
 # Intent - Laporan Warga
 resource "aws_lexv2models_intent" "lapor" {
+  depends_on  = [aws_lexv2models_bot_locale.id]
   bot_id      = aws_lexv2models_bot.kaltim.id
   bot_version = "DRAFT"
   locale_id   = "en_US"
@@ -170,6 +174,7 @@ resource "aws_lexv2models_intent" "lapor" {
 
 # Intent - Fallback
 resource "aws_lexv2models_intent" "fallback" {
+  depends_on  = [aws_lexv2models_bot_locale.id]
   bot_id      = aws_lexv2models_bot.kaltim.id
   bot_version = "DRAFT"
   locale_id   = "en_US"
