@@ -172,29 +172,6 @@ resource "aws_lexv2models_intent" "lapor" {
   }
 }
 
-# Intent - Fallback
-resource "aws_lexv2models_intent" "fallback" {
-  depends_on  = [aws_lexv2models_bot_locale.id]
-  bot_id      = aws_lexv2models_bot.kaltim.id
-  bot_version = "DRAFT"
-  locale_id   = "en_US"
-  name        = "FallbackIntent"
-  parent_intent_signature = "AMAZON.FallbackIntent"
-
-  fulfillment_code_hook { enabled = false }
-
-  closing_setting {
-    closing_response {
-      message_group {
-        message {
-          plain_text_message {
-            value = "Maaf, saya belum mengerti. Coba tanyakan tentang pembuatan KTP, KK, Akta, atau layanan lainnya."
-          }
-        }
-      }
-    }
-  }
-}
 
 # Lex Bot Version
 resource "aws_lexv2models_bot_version" "v1" {
