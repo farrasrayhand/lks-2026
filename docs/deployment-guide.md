@@ -6,8 +6,8 @@
 
 ## Daftar Isi
 
-1. [Tools yang Dibutuhkan](#1-tools-yang-dibutuhkan)
-2. [Setup AWS Account](#2-setup-aws-account)
+1. [Buka AWS CloudShell](#1-buka-aws-cloudshell)
+2. [Pastikan Permission AWS Cukup](#2-pastikan-permission-aws-cukup)
 3. [Deploy Infrastruktur dengan Terraform](#3-deploy-infrastruktur-dengan-terraform)
 4. [Launch EC2 Instance](#4-launch-ec2-instance)
 5. [Setup Aplikasi di EC2](#5-setup-aplikasi-di-ec2)
@@ -22,49 +22,50 @@
 
 ---
 
-## 1. Tools yang Dibutuhkan
+## 1. Buka AWS CloudShell
 
-Install semua ini sebelum mulai:
+Semua perintah Terraform dan Git dijalankan dari **AWS CloudShell** — terminal langsung di browser, tidak perlu install apapun di laptop. AWS CLI sudah tersedia dan sudah otomatis terautentikasi.
 
-| Tool | Versi | Install |
-|---|---|---|
-| Terraform | >= 1.5 | [hashicorp.com](https://developer.hashicorp.com/terraform/install) |
-| AWS CLI | >= 2.0 | [aws.amazon.com/cli](https://aws.amazon.com/cli/) |
-| Git | any | sudah ada di sistem |
+### Langkah 1 — Buka CloudShell
 
----
+1. Login ke **AWS Console**
+2. Klik ikon **CloudShell** di pojok kanan atas (ikon `>_`)
+3. Tunggu terminal terbuka (~10 detik)
 
-## 2. Setup AWS Account
-
-### Langkah 1 — Buat IAM User
-
-1. Buka **AWS Console → IAM → Users → Create user**
-2. Nama user: `kaltim-terraform`
-3. Pilih **Attach policies directly** → centang `AdministratorAccess`
-4. Klik **Create user**
-5. Buka user yang baru dibuat → tab **Security credentials → Create access key**
-6. Pilih **Command Line Interface (CLI)** → buat
-7. **Catat** Access Key ID dan Secret Access Key (hanya muncul sekali!)
-
-### Langkah 2 — Konfigurasi AWS CLI
+### Langkah 2 — Install Terraform
 
 ```bash
-aws configure
-```
-
-Isi saat diminta:
-```
-AWS Access Key ID: AKIA... (dari langkah 1)
-AWS Secret Access Key: ...
-Default region name: ap-southeast-1
-Default output format: json
+sudo yum install -y yum-utils
+sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
+sudo yum install -y terraform
 ```
 
 Verifikasi:
 ```bash
+terraform version
+aws sts get-caller-identity
+```
+
+### Langkah 3 — Clone Repository
+
+```bash
+git clone https://github.com/[username]/[nama-repo].git
+cd [nama-repo]
+```
+
+---
+
+## 2. Pastikan Permission AWS Cukup
+
+CloudShell otomatis menggunakan permission dari akun yang sedang login. Pastikan akun kamu punya **AdministratorAccess**.
+
+Cek di CloudShell:
+```bash
 aws sts get-caller-identity
 # Harus menampilkan Account ID dan ARN kamu
 ```
+
+> Jika akun yang disediakan panitia sudah `AdministratorAccess`, langsung lanjut ke Section 3.
 
 ---
 
@@ -74,10 +75,16 @@ Terraform akan membuat semua infrastruktur AWS yang dibutuhkan: VPC, RDS, Redis,
 
 ### Langkah 1 — Buat File `terraform.tfvars`
 
-Buat file ini di folder `terraform/` (sudah ada di `.gitignore`, jangan di-commit):
+Di CloudShell, masuk ke folder terraform dari repo yang sudah di-clone:
 
+```bash
+cd ~/[nama-repo]/terraform
 ```
-terraform/terraform.tfvars
+
+Buat file `terraform.tfvars` (sudah ada di `.gitignore`, tidak akan ter-commit):
+
+```bash
+nano terraform.tfvars
 ```
 
 Isi:
@@ -99,8 +106,6 @@ s3_bucket_name = "kaltim-uploads-[kode-peserta]-2026"
 ### Langkah 2 — Jalankan Terraform
 
 ```bash
-cd terraform
-
 terraform init
 
 terraform plan   # pastikan tidak ada error sebelum lanjut
