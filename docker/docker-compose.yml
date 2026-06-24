@@ -21,6 +21,7 @@ services:
       AWS_LEX_BOT_ALIAS_ID: ${AWS_LEX_BOT_ALIAS_ID:-}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-southeast-1}
       AWS_BUCKET: ${AWS_BUCKET:-}
+      AWS_URL: ${AWS_URL:-}
       FILESYSTEM_DISK: ${FILESYSTEM_DISK:-local}
       REDIS_HOST: ${REDIS_HOST:-cache}
       REDIS_PORT: 6379

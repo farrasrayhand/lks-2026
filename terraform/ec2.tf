@@ -147,6 +147,7 @@ resource "aws_launch_template" "app" {
     APP_URL=http://${aws_lb.app.dns_name}
     AWS_DEFAULT_REGION=${var.aws_region}
     AWS_BUCKET=${aws_s3_bucket.uploads.bucket}
+    AWS_URL=https://${aws_cloudfront_distribution.cdn.domain_name}
     AWS_LEX_BOT_ID=${aws_lexv2models_bot.kaltim.id}
     AWS_LEX_BOT_ALIAS_ID=${var.lex_bot_alias_id}
     CACHE_STORE=redis
