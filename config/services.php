@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'lex' => [
+        'bot_id'     => env('AWS_LEX_BOT_ID'),
+        'alias_id'   => env('AWS_LEX_BOT_ALIAS_ID'),
+        'region'     => env('AWS_DEFAULT_REGION', 'ap-southeast-1'),
+    ],
+
 ];

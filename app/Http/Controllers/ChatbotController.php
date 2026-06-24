@@ -76,8 +76,8 @@ class ChatbotController extends Controller
 
     private function tryLex(string $message, string $sessionId): ?string
     {
-        $botId = env('AWS_LEX_BOT_ID');
-        $aliasId = env('AWS_LEX_BOT_ALIAS_ID');
+        $botId = config('services.lex.bot_id');
+        $aliasId = config('services.lex.alias_id');
 
         if (!$botId || !$aliasId) {
             return null;
@@ -86,7 +86,7 @@ class ChatbotController extends Controller
         try {
             $client = new LexRuntimeV2Client([
                 'version' => 'latest',
-                'region' => env('AWS_DEFAULT_REGION', 'ap-southeast-1'),
+                'region' => config('services.lex.region'),
             ]);
 
             $result = $client->recognizeText([
