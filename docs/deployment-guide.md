@@ -1,188 +1,164 @@
-# Deployment Guide - Kaltim Smart Platform
+# Deployment Guide — Kaltim Smart Platform
 
-Panduan lengkap deploy Kaltim Smart Platform ke AWS menggunakan Terraform + langkah manual.
+> Deploy ke AWS menggunakan Terraform + Docker. Ikuti langkah-langkah di bawah sesuai urutan.
 
 ---
 
 ## Daftar Isi
-1. [Prasyarat](#1-prasyarat)
-2. [Persiapan AWS Account](#2-persiapan-aws-account)
-3. [Deploy Infrastruktur dengan Terraform](#3-deploy-infrastruktur-dengan-terraform)
+
+1. [Tools yang Dibutuhkan](#1-tools-yang-dibutuhkan)
+2. [Setup AWS Account](#2-setup-aws-account)
+3. [Deploy dengan Terraform](#3-deploy-dengan-terraform)
 4. [Setup Aplikasi di EC2](#4-setup-aplikasi-di-ec2)
-5. [Konfigurasi Amazon Lex (Chatbot AI)](#5-konfigurasi-amazon-lex-chatbot-ai)
-6. [Verifikasi & Testing](#6-verifikasi--testing)
-7. [Monitoring & Logging](#7-monitoring--logging)
+5. [Setup Amazon Lex (Chatbot)](#5-setup-amazon-lex-chatbot)
+6. [Cek & Test Aplikasi](#6-cek--test-aplikasi)
+7. [Monitoring](#7-monitoring)
 8. [Arsitektur AWS](#8-arsitektur-aws)
+9. [Pengujian Mandiri dengan Postman](#9-pengujian-mandiri-dengan-postman)
+10. [Checklist Pengumpulan](#10-checklist-pengumpulan)
 
 ---
 
-## 1. Prasyarat
+## 1. Tools yang Dibutuhkan
 
-| Tools | Versi | Cara Install |
+Install semua ini sebelum mulai:
+
+| Tool | Versi | Install |
 |---|---|---|
-| Terraform | >= 1.5 | `brew install terraform` / download dari hashicorp.com |
-| AWS CLI | >= 2.0 | `brew install awscli` / download dari aws.amazon.com |
-| Git | any | `brew install git` |
-| SSH Key | - | `ssh-keygen -t rsa -b 4096` |
+| Terraform | >= 1.5 | [hashicorp.com](https://developer.hashicorp.com/terraform/install) |
+| AWS CLI | >= 2.0 | [aws.amazon.com/cli](https://aws.amazon.com/cli/) |
+| Git | any | sudah terinstall di EC2 |
 
 ---
 
-## 2. Persiapan AWS Account
+## 2. Setup AWS Account
 
-### 2.1 Buat IAM User (AWS Console)
+### Langkah 1 — Buat IAM User
 
-1. Buka **AWS Console** → **IAM** → **Users** → **Create user**
-2. Nama: `kaltim-terraform`
-3. Centang **Provide user access to the AWS Management Console** → **I want to create an IAM user**
-4. Pilih **Attach policies directly**, centang:
-   - `AdministratorAccess` (atau custom policy untuk production)
-5. Klik **Next** → **Create user**
-6. Klik user yang baru dibuat → tab **Security credentials** → **Create access key**
-7. Pilih **Command Line Interface (CLI)** → **Next** → **Create access key**
-8. **Simpan** Access Key ID dan Secret Access Key (hanya muncul sekali!)
+1. Buka **AWS Console → IAM → Users → Create user**
+2. Nama user: `kaltim-terraform`
+3. Pilih **Attach policies directly** → centang `AdministratorAccess`
+4. Klik **Create user**
+5. Buka user yang baru dibuat → tab **Security credentials → Create access key**
+6. Pilih **Command Line Interface (CLI)** → buat
+7. **Catat** Access Key ID dan Secret Access Key (hanya muncul sekali!)
 
-### 2.2 Konfigurasi AWS CLI
+### Langkah 2 — Konfigurasi AWS CLI
 
 ```bash
 aws configure
-# AWS Access Key ID: AKIA... (dari langkah 2.1)
-# AWS Secret Access Key: ... (dari langkah 2.1)
-# Default region name: ap-southeast-1 (Singapore)
-# Default output format: json
+```
+
+Isi saat diminta:
+```
+AWS Access Key ID: AKIA... (dari langkah 1)
+AWS Secret Access Key: ...
+Default region name: ap-southeast-1
+Default output format: json
 ```
 
 Verifikasi:
 ```bash
 aws sts get-caller-identity
-# Harus menampilkan UserId, Account, Arn
+# Harus menampilkan Account ID dan ARN kamu
 ```
 
-### 2.3 Buat SSH Key Pair (AWS Console)
+### Langkah 3 — Buat SSH Key Pair
 
-1. Buka **AWS Console** → **EC2** → **Key Pairs** → **Create key pair**
-2. Nama: `kaltim-key`
-3. Type: RSA, Format: `.pem`
-4. Klik **Create key pair** → file `.pem` akan terdownload otomatis
-5. Simpan dan ubah permission:
-   ```bash
-   mv ~/Downloads/kaltim-key.pem ~/.ssh/
-   chmod 400 ~/.ssh/kaltim-key.pem
-   ```
+1. Buka **AWS Console → EC2 → Key Pairs → Create key pair**
+2. Nama: `kaltim-key`, Type: RSA, Format: `.pem`
+3. File `.pem` akan terdownload otomatis
+4. Simpan dan ubah permission:
 
-### 2.4 Siapkan Domain (Opsional)
-
-Jika ada domain (contoh: kaltim.go.id), buat **Route 53 Hosted Zone**:
-1. AWS Console → **Route 53** → **Hosted zones** → **Create hosted zone**
-2. Domain name: `kaltim.go.id`, Type: Public
-3. Copy NS records ke registrar domain Anda
+```bash
+mv ~/Downloads/kaltim-key.pem ~/.ssh/
+chmod 400 ~/.ssh/kaltim-key.pem
+```
 
 ---
 
-## 3. Deploy Infrastruktur dengan Terraform
+## 3. Deploy dengan Terraform
 
-### 3.1 Clone Repository
+### Langkah 1 — Siapkan APP_KEY dan JWT_SECRET
+
+Jalankan ini di laptop kamu (bukan di EC2):
 
 ```bash
-git clone https://github.com/[username]/lks-kaltim-2026-[kode-peserta].git
-cd lks-kaltim-2026-[kode-peserta]/terraform
+cd lks-kaltim-2026-[kode-peserta]
+
+# Generate APP_KEY
+php artisan key:generate --show
+# Catat hasilnya: base64:xxxxx
+
+# Generate JWT Secret
+php artisan jwt:secret --show
+# Catat hasilnya: xxxxx
 ```
 
-### 3.2 Buat Konfigurasi Variabel
+### Langkah 2 — Buat File Konfigurasi Terraform
 
 ```bash
-# Generate APP_KEY di lokal dulu
-cd ..
-php artisan key:generate --show
-# Copy output-nya: base64:...
-
-php artisan jwt:secret --show
-# Copy output-nya
-
-# Buat file terraform.tfvars
 cd terraform
+
 cat > terraform.tfvars << 'EOF'
-# Region
-aws_region       = "ap-southeast-1"
-
-# Project
-project_name     = "kaltim-smart-platform"
-environment      = "production"
-
-# Compute
-key_name         = "kaltim-key"
-instance_type    = "t3.medium"
-
-# Database
-db_username      = "kaltim_admin"
-db_password      = "K4lt1m#Secure2026!"
-db_name          = "kaltim_smart_platform"
-
-# Application secrets (dari langkah di atas)
-app_key          = "base64:..."
-jwt_secret       = "...jwt-secret-hash..."
-
-# S3 (harus unique global)
-s3_bucket_name   = "kaltim-uploads-[kode-peserta]-2026"
+aws_region     = "ap-southeast-1"
+project_name   = "kaltim-smart-platform"
+environment    = "production"
+key_name       = "kaltim-key"
+instance_type  = "t3.medium"
+db_username    = "kaltim_admin"
+db_password    = "K4lt1m#Secure2026!"
+db_name        = "kaltim_smart_platform"
+app_key        = "base64:..."         # ganti dengan hasil langkah 1
+jwt_secret     = "..."                # ganti dengan hasil langkah 1
+s3_bucket_name = "kaltim-uploads-[kode-peserta]-2026"
 EOF
 ```
 
-> ⚠️ **Penting:** Ganti `db_password`, `app_key`, `jwt_secret`, dan `s3_bucket_name` dengan nilai asli!
+> ⚠️ Ganti nilai `app_key`, `jwt_secret`, dan `s3_bucket_name` sebelum lanjut!
 
-### 3.3 Jalankan Terraform
+### Langkah 3 — Jalankan Terraform
 
 ```bash
-# Inisialisasi
 terraform init
 
-# Preview perubahan
-terraform plan
+terraform plan   # preview — pastikan tidak ada error
 
-# Deploy infrastruktur (ketik "yes" untuk konfirmasi)
-terraform apply
+terraform apply  # ketik "yes" saat diminta
 ```
 
-Tunggu ~10-15 menit sampai selesai. Terraform akan menampilkan output:
-```
-alb_dns_name = "kaltim-smart-platform-alb-123456.ap-southeast-1.elb.amazonaws.com"
-rds_endpoint = "kaltim-smart-platform-db.xxxx.ap-southeast-1.rds.amazonaws.com:3306"
-s3_bucket_name = "kaltim-uploads-xxx-2026"
-vpc_id = "vpc-xxx"
-lex_bot_id = "XXX"
-lex_bot_alias_id = "XXX"
-```
+Tunggu **10–15 menit**. Setelah selesai, catat output-nya:
 
-### 3.4 Catat Output
-
-Simpan output ini — akan dipakai di langkah selanjutnya:
 ```bash
 terraform output > outputs.txt
 cat outputs.txt
 ```
 
+Output yang penting:
+- `alb_dns_name` — URL aplikasi kamu
+- `rds_endpoint` — endpoint database
+- `s3_bucket_name` — nama bucket S3
+- `lex_bot_id` dan `lex_bot_alias_id` — untuk chatbot
+
 ---
 
 ## 4. Setup Aplikasi di EC2
 
-### 4.1 SSH ke EC2 Instance
-
-Setelah Terraform selesai, EC2 instance sudah berjalan di private subnet. Akses melalui bastion host atau:
+### Langkah 1 — Masuk ke EC2
 
 ```bash
-# Dapatkan EC2 instance ID
+# Cari instance ID
 aws ec2 describe-instances \
   --filters "Name=tag:Name,Values=kaltim-smart-platform-instance" \
   --query "Reservations[0].Instances[0].InstanceId" --output text
 
-# Connect via SSM (Systems Manager Session Manager - tanpa perlu public IP)
+# Connect via SSM (tanpa perlu public IP)
 aws ssm start-session --target i-xxxxxxxxxxxxx
 ```
 
-> Jika tidak pakai SSM, deploy dulu bastion host di public subnet, lalu SSH tunnel ke private instance.
-
-### 4.2 Clone & Setup Aplikasi
+### Langkah 2 — Install Docker dan Clone Repo
 
 ```bash
-# Di dalam EC2 instance
 sudo yum update -y
 sudo yum install -y git docker
 sudo systemctl enable docker && sudo systemctl start docker
@@ -191,111 +167,114 @@ sudo usermod -aG docker ec2-user
 # Clone repo
 git clone https://github.com/[username]/lks-kaltim-2026-[kode-peserta].git /opt/kaltim-app
 cd /opt/kaltim-app/docker
+```
 
-# Copy env file
-cp .env.example .env
+### Langkah 3 — Buat File .env
 
-# Edit docker/.env
+```bash
 cat > .env << 'EOF'
-APP_KEY=base64:...         # sama dengan terraform.tfvars
-JWT_SECRET=...             # sama dengan terraform.tfvars
+APP_KEY=base64:...               # sama dengan terraform.tfvars
+JWT_SECRET=...                   # sama dengan terraform.tfvars
 DB_DATABASE=kaltim_smart_platform
 DB_USERNAME=kaltim_admin
-DB_PASSWORD=K4lt1m#Secure2026!   # sama dengan terraform.tfvars
+DB_PASSWORD=K4lt1m#Secure2026!
 DB_ROOT_PASSWORD=root_secret_123
 APP_PORT=80
-APP_URL=http://<alb-dns-name>
+APP_URL=http://<alb-dns-name>    # ganti dengan ALB DNS dari terraform output
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
 AWS_DEFAULT_REGION=ap-southeast-1
-AWS_BUCKET=kaltim-uploads-xxx-2026
-AWS_LEX_BOT_ID=XXX          # dari output terraform
-AWS_LEX_BOT_ALIAS_ID=YYY    # dari output terraform
+AWS_BUCKET=kaltim-uploads-[kode-peserta]-2026
+AWS_LEX_BOT_ID=...               # dari terraform output
+AWS_LEX_BOT_ALIAS_ID=...         # dari terraform output
 CACHE_STORE=redis
 SESSION_DRIVER=redis
 FILESYSTEM_DISK=s3
 EOF
 ```
 
-### 4.3 Jalankan Aplikasi
+### Langkah 4 — Jalankan Aplikasi
 
 ```bash
-cd /opt/kaltim-app/docker
 docker compose up -d --build
 
 # Cek status
 docker compose ps
-docker compose logs app | tail -20
+docker compose logs app --tail=20
 ```
 
 ---
 
-## 5. Konfigurasi Amazon Lex (Chatbot AI)
+## 5. Setup Amazon Lex (Chatbot)
 
-Chatbot otomatis aktif saat `AWS_LEX_BOT_ID` diset. Berikut setup di AWS Console:
+### Langkah 1 — Buat Bot di AWS Console
 
-### 5.1 Build Bot (AWS Console)
-
-1. Buka **AWS Console** → **Amazon Lex** → **Create bot**
+1. Buka **AWS Console → Amazon Lex → Create bot**
 2. Pilih **Create a blank bot**
 3. Nama: `KaltimServiceBot`
-4. IAM permissions: **Create a role with basic Amazon Lex permissions**
-5. Children's Online Privacy Protection Act: **No**
-6. Idle timeout: 5 menit → **Next**
-7. Language: **Indonesian (id_ID)** → **Done**
+4. IAM: **Create a role with basic Amazon Lex permissions**
+5. Children's Privacy: **No** → Idle timeout: **5 menit** → **Next**
+6. Language: **Indonesian (id_ID)** → **Done**
 
-### 5.2 Tambahkan Intent
+### Langkah 2 — Tambahkan Intent
 
-**Klik intent FallbackIntent** (default), lalu tambah intent baru:
+Klik **Add intent** untuk setiap baris berikut:
 
-| Intent Name | Sample Utterances | Response |
+| Intent | Contoh Ucapan | Respons Bot |
 |---|---|---|
-| GreetingIntent | "halo", "selamat pagi", "hai" | "Halo! Ada yang bisa saya bantu seputar layanan publik?" |
-| KTPIntent | "cara buat KTP", "syarat e-KTP" | "Untuk membuat KTP: daftar akun, pilih Layanan > Pembuatan KTP..." |
+| GreetingIntent | "halo", "selamat pagi", "hai" | "Halo! Ada yang bisa saya bantu?" |
+| KTPIntent | "cara buat KTP", "syarat e-KTP" | "Untuk membuat KTP: daftar akun → pilih Layanan → Pembuatan KTP..." |
 | KKIntent | "buat kartu keluarga", "syarat KK" | "KK bisa diajukan online. Estimasi 7 hari kerja..." |
 | LaporIntent | "lapor jalan rusak", "aduan sampah" | "Laporkan di menu Laporan Warga, pilih kategori..." |
 
-### 5.3 Build & Publish
+### Langkah 3 — Build dan Deploy
 
 1. Klik **Build** (tunggu ~2 menit)
-2. Setelah build selesai, klik **Deploy** → **Create alias**
-3. Alias name: `prod` → **Create**
+2. Klik **Deploy → Create alias**, nama: `prod`
 
-### 5.4 Dapatkan Bot ID & Alias ID
+### Langkah 4 — Ambil Bot ID dan Alias ID
 
-1. Kembali ke daftar bot → klik bot `KaltimServiceBot`
-2. **Bot ID** ada di pojok kanan atas (format: `XXXXXXXXXX`)
-3. Klik **Aliases** → klik alias `prod` → **Alias ID** di pojok kanan atas (format: `YYYYYYYYYY`)
+1. Kembali ke daftar bot → klik `KaltimServiceBot`
+2. **Bot ID** ada di pojok kanan atas
+3. Klik **Aliases → prod** → **Alias ID** di pojok kanan atas
 
-### 5.5 Update Environment
+### Langkah 5 — Update .env di EC2
 
 ```bash
-# Di EC2 instance
 cd /opt/kaltim-app/docker
-echo "AWS_LEX_BOT_ID=XXXXXXXXXX" >> .env
-echo "AWS_LEX_BOT_ALIAS_ID=YYYYYYYYYY" >> .env
+# Edit .env, update dua baris ini:
+# AWS_LEX_BOT_ID=...
+# AWS_LEX_BOT_ALIAS_ID=...
+
 docker compose up -d --build
 ```
 
 ---
 
-## 6. Verifikasi & Testing
+## 6. Cek & Test Aplikasi
 
-### 6.1 Cek Kesehatan
+### Health Check
 
 ```bash
-# Health check (via browser atau curl)
+# Cek via curl
 curl http://<alb-dns-name>/health
 
-# API Health (JSON)
+# API Health
 curl http://<alb-dns-name>/api/health
 # Harus return: {"success":true,"message":"All systems operational"}
 ```
 
-### 6.2 Test API
+### Test Login via Browser
+
+Buka `http://<alb-dns-name>`:
+- Admin: `admin@kaltim.go.id` / `password`
+- Warga: `budi@email.com` / `password`
+- Chatbot: klik bubble 💬 di kanan bawah, ketik "cara buat KTP"
+
+### Test API via curl
 
 ```bash
-# Daftar layanan publik
+# Daftar layanan
 curl http://<alb-dns-name>/api/services
 
 # Login admin
@@ -303,68 +282,30 @@ curl -X POST http://<alb-dns-name>/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@kaltim.go.id","password":"password"}'
 
-# Dashboard (pakai token dari response login)
+# Gunakan token dari response login untuk endpoint lain:
 curl http://<alb-dns-name>/api/dashboard/stats \
   -H "Authorization: Bearer <token>"
 ```
 
-### 6.3 Test Web UI
-
-Buka `http://<alb-dns-name>` di browser:
-- Login sebagai admin: `admin@kaltim.go.id` / `password`
-- Login sebagai warga: `budi@email.com` / `password`
-- Chatbot: klik bubble 💬 di kanan bawah
-
-### 6.4 Test Upload File (S3)
-
-1. Login sebagai warga
-2. Buat laporan dengan upload foto
-3. Cek AWS Console → S3 → bucket `kaltim-uploads-xxx` → file harus ada
-
 ---
 
-## 7. Monitoring & Logging
+## 7. Monitoring
 
-### 7.1 CloudWatch Logs
-
-```bash
-# Lihat log aplikasi
-aws logs tail /ecs/kaltim-app --follow
-
-# Atau via AWS Console → CloudWatch → Log groups
-```
-
-### 7.2 RDS Monitoring
-
-AWS Console → **RDS** → **Databases** → klik `kaltim-smart-platform-db` → tab **Monitoring**
-- CPU Utilization
-- Database Connections
-- Free Storage Space
-- Read/Write IOPS
-
-### 7.3 EC2 & ALB Monitoring
-
-AWS Console → **EC2** → **Auto Scaling Groups** → `kaltim-smart-platform-asg` → tab **Monitoring**
-
-AWS Console → **EC2** → **Load Balancers** → `kaltim-smart-platform-alb` → tab **Monitoring**
-- Request Count
-- Target Response Time
-- HTTP 5XX Count
-
-### 7.4 CloudWatch Alarms (Opsional)
+### Lihat Log Aplikasi
 
 ```bash
-# Contoh: Alarm jika CPU > 80%
-aws cloudwatch put-metric-alarm \
-  --alarm-name kaltim-high-cpu \
-  --metric-name CPUUtilization \
-  --namespace AWS/EC2 \
-  --statistic Average \
-  --period 300 \
-  --threshold 80 \
-  --comparison-operator GreaterThanThreshold \
-  --evaluation-periods 2
+# Di dalam EC2 instance
+cd /opt/kaltim-app/docker
+docker compose logs app -f
 ```
+
+### CloudWatch di AWS Console
+
+- **EC2:** AWS Console → EC2 → Auto Scaling Groups → tab Monitoring
+- **RDS:** AWS Console → RDS → Databases → tab Monitoring
+- **ALB:** AWS Console → EC2 → Load Balancers → tab Monitoring
+
+Metrik yang perlu dipantau: CPU Utilization, Database Connections, Request Count, Response Time.
 
 ---
 
@@ -373,79 +314,62 @@ aws cloudwatch put-metric-alarm \
 ![Architecture](architecture-diagram.png)
 
 ```
-                          INTERNET
-                              │
-                              ▼
-              ┌───────────────────────────────┐
-              │    Application Load Balancer  │  Public Subnets (AZ1 + AZ2)
-              │    (port 80/443)              │
-              └───────────────┬───────────────┘
-                              │
-              ┌───────────────┴───────────────┐
-              │                               │
-              ▼                               ▼
-    ┌──────────────────┐          ┌──────────────────┐
-    │  EC2 App (AZ1)   │          │  EC2 App (AZ2)   │  Private App Subnets
-    │  Docker +        │          │  Docker +        │
-    │  PHP-FPM + Nginx │          │  PHP-FPM + Nginx │
-    └───┬──────┬───────┘          └───┬──────┬───────┘
-        │      │                      │      │
-        │      │     ┌────────────────┘      │
-        ▼      │     │                       │
-  ┌─────────┐  │     │     ┌─────────────────┘
-  │   RDS   │  │     │     │
-  │  MySQL  │  │     │     │
-  │ (AZ1)   │  │     │     │
-  └─────────┘  │     │     │
-               │     │     │
-  Private DB   │     │     │
-  Subnets      ▼     │     ▼
-          ┌──────────────┐  ┌─────────┐
-          │ ElastiCache  │  │   S3    │
-          │   Redis      │  │ Uploads │
-          └──────────────┘  └─────────┘
+                      INTERNET
+                          │
+                          ▼
+          ┌───────────────────────────────┐
+          │    Application Load Balancer  │  Public Subnets (AZ1 + AZ2)
+          │    (port 80/443)              │
+          └───────────────┬───────────────┘
+                          │
+              ┌───────────┴───────────┐
+              ▼                       ▼
+    ┌──────────────────┐  ┌──────────────────┐
+    │  EC2 App (AZ1)   │  │  EC2 App (AZ2)   │  Private App Subnets
+    │  Docker +        │  │  Docker +        │
+    │  PHP-FPM + Nginx │  │  PHP-FPM + Nginx │
+    └───┬──────┬───────┘  └───┬──────┬───────┘
+        │      │              │      │
+        ▼      │              │      ▼
+  ┌─────────┐  │              │  ┌─────────┐
+  │   RDS   │  └──────┬───────┘  │   S3    │
+  │  MySQL  │         ▼          │ Uploads │
+  │ (AZ1)   │  ┌──────────────┐  └─────────┘
+  └─────────┘  │ ElastiCache  │
+               │   Redis      │
+               └──────────────┘
 
-  ALL WITHIN VPC 10.0.0.0/16
-  ├── Public Subnets:    10.0.1.0/24, 10.0.2.0/24
-  ├── App Subnets:       10.0.10.0/24, 10.0.11.0/24
-  └── DB Subnets:        10.0.20.0/24, 10.0.21.0/24
+  VPC 10.0.0.0/16
+  ├── Public Subnets:  10.0.1.0/24, 10.0.2.0/24   (ALB)
+  ├── App Subnets:     10.0.10.0/24, 10.0.11.0/24  (EC2)
+  └── DB Subnets:      10.0.20.0/24, 10.0.21.0/24  (RDS + Redis)
 ```
 
-### Komponen AWS
-
-| Komponen | Resouce | Deskripsi |
+| Komponen | Spesifikasi | Keterangan |
 |---|---|---|
 | VPC | 10.0.0.0/16 | Virtual Private Cloud |
-| Subnet Publik | 2 AZ | Untuk ALB |
-| Subnet App | 2 AZ | Untuk EC2 instances |
-| Subnet DB | 2 AZ | Untuk RDS + ElastiCache |
-| IGW | 1 | Internet Gateway |
-| NAT Gateway | 1 | Outbound internet untuk private subnet |
-| ALB | 1 | Application Load Balancer |
-| EC2 ASG | 2-4 instances | Auto Scaling Group (t3.medium) |
-| RDS | 1 (Multi-AZ: false) | MySQL 8.0 (db.t3.micro) |
-| ElastiCache | 1 | Redis 7 (cache.t3.micro) |
-| S3 | 1 bucket | File uploads (versioned, AES-256, blocked public access) |
-| Lex | 1 bot | Chatbot AI Bahasa Indonesia |
-| Route Tables | 3 | Public, App Private, DB Private |
-| Security Groups | 4 | ALB, App, RDS, ElastiCache (least privilege) |
+| ALB | 1 | Application Load Balancer (public) |
+| EC2 ASG | 2–4 × t3.medium | Auto Scaling, private subnet |
+| RDS | db.t3.micro, MySQL 8.0 | Private subnet |
+| ElastiCache | cache.t3.micro, Redis 7 | Private subnet |
+| S3 | 1 bucket | Upload file, blocked public access |
+| Amazon Lex | 1 bot | Chatbot Bahasa Indonesia |
+| NAT Gateway | 1 | Internet untuk instance private |
 
 ---
 
-## 9. Pengujian Mandiri (Wajib Sebelum Pengumpulan)
+## 9. Pengujian Mandiri dengan Postman
 
-### 9.1 Uji API dengan Postman
+### Setup Postman
 
-#### 9.1.1 Setup Postman Collection
+1. Buat **New Collection** → nama: `Kaltim Smart Platform`
+2. Tambah **Collection Variables**:
+   - `base_url` → `http://<alb-dns-name>` (isi dengan ALB DNS kamu)
+   - `token` → (kosong, diisi setelah login)
 
-1. Buka **Postman** → **New Collection** → nama: `Kaltim Smart Platform`
-2. Klik **Variables** → tambahkan:
-   | Variable | Value |
-   |---|---|
-   | `base_url` | `http://<alb-dns-name>` (ganti dengan ALB URL asli) |
-   | `token` | (kosong dulu, akan diisi setelah login) |
+---
 
-#### 9.1.2 Test Autentikasi
+### A. Test Autentikasi
 
 **Register:**
 ```
@@ -458,336 +382,239 @@ Body (JSON):
   "phone": "08123456789",
   "address": "Jl. Test No. 1"
 }
-
-Expected Response (201):
-✅ success = true
-✅ data.user.role = "citizen"
-✅ data.token exists (JWT)
+✅ status 201, success: true, data.token ada
 ```
 
 **Login Admin:**
 ```
 POST {{base_url}}/api/auth/login
-Body (JSON):
-{
-  "email": "admin@kaltim.go.id",
-  "password": "password"
-}
-
-Expected Response (200):
-✅ success = true
-✅ data.token exists
+Body (JSON): { "email": "admin@kaltim.go.id", "password": "password" }
+✅ status 200, data.token ada
+→ Copy token ke Collection variable "token"
 ```
-
-> Setelah login, copy token → paste ke Collection variable `token`
 
 **Login Warga:**
 ```
 POST {{base_url}}/api/auth/login
-Body (JSON):
-{
-  "email": "budi@email.com",
-  "password": "password"
-}
+Body (JSON): { "email": "budi@email.com", "password": "password" }
 ```
 
 **Profile:**
 ```
 GET {{base_url}}/api/auth/profile
 Authorization: Bearer {{token}}
-
-Expected Response (200):
-✅ data.role exists
-✅ data.email exists
+✅ data.role dan data.email ada
 ```
 
 **Logout:**
 ```
 POST {{base_url}}/api/auth/logout
 Authorization: Bearer {{token}}
-
-Expected Response (200):
-✅ success = true
+✅ success: true
 ```
 
-#### 9.1.3 Test Layanan Publik
+---
 
-**Daftar Layanan:**
+### B. Test Layanan Publik
+
+**Daftar Layanan (publik, tanpa token):**
 ```
 GET {{base_url}}/api/services
-
-Expected Response (200):
-✅ data is array
-✅ data[0].name exists
+✅ data berupa array, data[0].name ada
 ```
 
 **Ajukan Layanan (sebagai warga):**
 ```
 POST {{base_url}}/api/services/request
 Authorization: Bearer <warga_token>
-Body (JSON):
-{
-  "service_type_id": 1,
-  "description": "Pengajuan test"
-}
-
-Expected Response (201):
-✅ success = true
-✅ data.status = "pending"
+Body: { "service_type_id": 1, "description": "Pengajuan test" }
+✅ status 201, data.status = "pending"
 ```
 
 **Update Status (sebagai admin):**
 ```
 PUT {{base_url}}/api/services/request/1/status
 Authorization: Bearer <admin_token>
-Body (JSON):
-{ "status": "processing" }
-
-Expected Response (200):
-✅ success = true
+Body: { "status": "processing" }
+✅ status 200, success: true
 ```
 
 **Cek Notifikasi Warga (harus ada notif baru):**
 ```
 GET {{base_url}}/api/notifications
 Authorization: Bearer <warga_token>
-
-Expected Response (200):
-✅ data.data[0].message contains "berubah"
+✅ data.data[0].message mengandung kata "berubah"
 ```
 
-#### 9.1.4 Test Laporan Warga
+---
+
+### C. Test Laporan Warga
 
 **Buat Laporan:**
 ```
 POST {{base_url}}/api/reports
 Authorization: Bearer <warga_token>
-Body (JSON):
+Body:
 {
   "category": "infrastructure",
   "title": "Jalan Berlubang Test",
   "description": "Test laporan jalan berlubang",
   "location": "Jl. Test"
 }
-
-Expected Response (201):
-✅ success = true
-✅ data.status = "open"
+✅ status 201, data.status = "open"
 ```
 
-**Lihat Laporan (admin - harus lihat semua):**
+**Lihat Laporan (admin — harus bisa lihat semua):**
 ```
 GET {{base_url}}/api/reports
 Authorization: Bearer <admin_token>
-
-Expected Response (200):
-✅ data.data contains multiple reports
+✅ data.data berisi laporan dari semua user
 ```
 
-**Lihat Laporan (warga - hanya miliknya):**
+**Lihat Laporan (warga — hanya miliknya):**
 ```
 GET {{base_url}}/api/reports
 Authorization: Bearer <warga_token>
-
-Expected Response (200):
-✅ Semua data.data[].user_id sama dengan user login
+✅ semua item di data.data punya user_id yang sama
 ```
 
-#### 9.1.5 Test Dashboard Admin
+---
+
+### D. Test Dashboard Admin
 
 **Statistik:**
 ```
 GET {{base_url}}/api/dashboard/stats
 Authorization: Bearer <admin_token>
-
-Expected Response (200):
-✅ data.users exists
-✅ data.reports exists
-✅ data.service_requests exists
+✅ data.users, data.reports, data.service_requests ada
 ```
 
 **Rekapitulasi per Kategori:**
 ```
 GET {{base_url}}/api/dashboard/reports/summary
 Authorization: Bearer <admin_token>
-
-Expected Response (200):
-✅ data is array of { category, total }
+✅ data berupa array { category, total }
 ```
 
-#### 9.1.6 Test Keamanan (RBAC)
+---
 
-**Warga akses dashboard admin → HARUS 403:**
+### E. Test Keamanan (RBAC)
+
+**Warga akses admin → harus 403:**
 ```
 GET {{base_url}}/api/dashboard/stats
 Authorization: Bearer <warga_token>
-
-Expected Response (403):
-✅ success = false
-✅ message contains "Unauthorized" atau "Insufficient permissions"
+✅ status 403, success: false
 ```
 
-**Warga update status layanan → HARUS 403:**
+**Warga update status → harus 403:**
 ```
 PUT {{base_url}}/api/services/request/1/status
 Authorization: Bearer <warga_token>
-Body (JSON): { "status": "done" }
-
-Expected Response (403):
-✅ success = false
+Body: { "status": "done" }
+✅ status 403, success: false
 ```
 
-**Tanpa token akses endpoint → HARUS 401:**
+**Tanpa token → harus 401:**
 ```
 GET {{base_url}}/api/auth/profile
 (Tanpa Authorization header)
-
-Expected Response (401):
-✅ Unauthorized / Token not provided
+✅ status 401
 ```
 
 **S3 Block Public Access:**
 ```
-# Buka browser, akses:
-https://<s3-bucket-name>.s3.ap-southeast-1.amazonaws.com/
-
-Expected:
-✅ Access Denied (XML error)
-❌ BUKAN list of objects
+Buka di browser: https://<s3-bucket>.s3.ap-southeast-1.amazonaws.com/
+✅ Harus muncul "Access Denied"
+❌ Jangan sampai muncul list file
 ```
 
-**HTTP → HTTPS Redirect (jika ada ACM/SSL):**
+---
+
+### F. Test Health Check
+
+**Web Health (browser):**
 ```
-curl -I http://<alb-dns-name>
-
-Expected:
-✅ HTTP/1.1 301 Moved Permanently
-✅ Location: https://...
-```
-
-#### 9.1.7 Health Check
-
-**Web Health:**
-```
-Buka browser: http://<alb-dns-name>/health
-
-Expected:
-✅ Menampilkan "All Systems Operational"
-✅ Database: OK (mysql)
-✅ Cache: OK (redis)
-✅ Storage: OK
+Buka: http://<alb-dns-name>/health
+✅ Tampilkan "All Systems Operational"
+✅ Database: OK, Cache: OK, Storage: OK
 ```
 
 **API Health:**
 ```
 GET {{base_url}}/api/health
-
-Expected Response (200):
-✅ success = true
 ✅ data.database.status = "ok"
 ✅ data.cache.status = "ok"
 ✅ data.storage.status = "ok"
 ```
 
-#### 9.1.8 Chatbot Test
+---
 
-**Web Chatbot:**
+### G. Test Chatbot
+
+**Via browser:**
 ```
-Buka browser: http://<alb-dns-name> → klik bubble 💬
-
-Ketik: "cara buat ktp"
-
-Expected:
+Buka http://<alb-dns-name> → klik 💬 → ketik: "cara buat ktp"
 ✅ Bot membalas dengan panduan pembuatan KTP
 ```
 
-**API Chatbot:**
+**Via API:**
 ```
 POST {{base_url}}/api/chatbot
-Body (JSON): { "message": "cara daftar akun" }
-
-Expected Response (200):
-✅ reply contains instruksi registrasi
+Body: { "message": "cara daftar akun" }
+✅ reply berisi instruksi registrasi
 ```
-
-#### 9.1.9 Validasi Format Response JSON
-
-Semua endpoint API harus mengembalikan format:
-```json
-{
-  "success": true|false,
-  "message": "string",
-  "data": { ... }
-}
-```
-
-> ✅ Cek di setiap response Postman: field `success`, `message`, `data` harus selalu ada.
-
-#### 9.1.10 Validasi Pagination
-
-```
-GET {{base_url}}/api/reports?per_page=2&page=1
-
-Expected Response (200):
-✅ data.current_page = 1
-✅ data.per_page = 2
-✅ data.data.length <= 2
-✅ data.links exists
-✅ data.total exists
-```
-
-### 9.2 Ekspor Postman Collection
-
-1. Di Postman, klik **...** pada collection `Kaltim Smart Platform`
-2. Pilih **Export** → Format: **Collection v2.1** → **Export**
-3. Simpan file sebagai `Kaltim-Smart-Platform.postman_collection.json`
 
 ---
 
-## 10. 📦 Checklist Pengumpulan Lomba (Pukul 17.00 WITA)
+### H. Validasi Format Response dan Pagination
 
-### 10.1 URL Deployment Live
-- [ ] ALB DNS: `http://<alb-dns-name>` (aktif & bisa diakses)
-- [ ] Simpan di `README.md` bagian atas
-
-### 10.2 Postman Collection
-- [ ] File: `Kaltim-Smart-Platform.postman_collection.json`
-- [ ] Semua endpoint sudah di-test
-- [ ] Response sesuai ekspektasi (success/error, format JSON, pagination)
-
-### 10.3 Screenshot CloudWatch Dashboard
-
-Buka AWS Console → **CloudWatch** → **Dashboards** → **Create dashboard**
-
-Tambahkan widget berikut:
-1. **EC2 CPU Utilization** (line graph)
-2. **ALB Request Count** (number)
-3. **RDS Database Connections** (line graph)
-4. **Target Response Time** (line graph)
-
-> Screenshot dashboard yang menampilkan semua widget → simpan sebagai `cloudwatch-dashboard.png`
-
-### 10.4 CloudTrail Log + S3 Presigned URL
-
-#### Aktifkan CloudTrail (jika belum):
-1. AWS Console → **CloudTrail** → **Create trail**
-2. Trail name: `kaltim-trail`
-3. Centang **Enable for all accounts in my organization** (jika ada)
-4. Pilih S3 bucket untuk menyimpan log → **Next** → **Create trail**
-
-#### Generate Presigned URL:
-
-```bash
-# Via AWS CLI (berlaku 1 jam)
-aws s3 presign s3://<cloudtrail-bucket>/AWSLogs/<account-id>/CloudTrail/<region>/<date>/ \
-  --expires-in 3600
-
-# Simpan URL yang dihasilkan
+**Format JSON — semua endpoint harus punya:**
+```json
+{ "success": true|false, "message": "...", "data": {...} }
 ```
 
-> ⚠️ Presigned URL HARUS dibuat **maksimal 1 jam sebelum pengumpulan (sekitar pukul 16.00 WITA)**
+**Pagination:**
+```
+GET {{base_url}}/api/reports?per_page=2&page=1
+✅ data.current_page = 1
+✅ data.per_page = 2
+✅ data.data.length <= 2
+✅ data.links dan data.total ada
+```
 
-### 10.5 Update README.md
+### Ekspor Postman Collection
+
+1. Klik **...** pada collection → **Export**
+2. Format: **Collection v2.1**
+3. Simpan sebagai: `Kaltim-Smart-Platform.postman_collection.json`
+
+---
+
+## 10. Checklist Pengumpulan
+
+> Deadline: **pukul 17.00 WITA**
+
+### Yang harus dikumpulkan:
+
+- [ ] **URL Live** — `http://<alb-dns-name>` aktif dan bisa diakses
+  - Tulis di bagian atas `README.md`
+- [ ] **Postman Collection** — file `Kaltim-Smart-Platform.postman_collection.json`
+  - Semua endpoint sudah di-test, response sesuai
+- [ ] **Screenshot CloudWatch Dashboard**
+  - Buat dashboard baru di CloudWatch
+  - Tambahkan widget: EC2 CPU, ALB Request Count, RDS Connections, Response Time
+  - Screenshot semua widget dalam satu layar → simpan sebagai `cloudwatch-dashboard.png`
+- [ ] **CloudTrail Presigned URL**
+  - Aktifkan CloudTrail jika belum (simpan log ke S3)
+  - Generate presigned URL **maksimal 1 jam sebelum deadline (sekitar 16.00 WITA):**
+    ```bash
+    aws s3 presign s3://<cloudtrail-bucket>/AWSLogs/<account-id>/CloudTrail/<region>/<date>/ \
+      --expires-in 3600
+    ```
+  - Simpan URL yang dihasilkan
+
+### Update README.md sebelum kumpul:
 
 ```markdown
 ## Deployment Live
@@ -800,13 +627,13 @@ aws s3 presign s3://<cloudtrail-bucket>/AWSLogs/<account-id>/CloudTrail/<region>
 
 ## Perkiraan Biaya Bulanan
 
-| Layanan | Spesifikasi | Estimasi/biaya |
+| Layanan | Spesifikasi | Estimasi |
 |---|---|---|
 | EC2 | 2x t3.medium | ~$60 |
 | RDS | db.t3.micro | ~$15 |
 | ElastiCache | cache.t3.micro | ~$12 |
-| ALB | 1 ALB | ~$20 |
+| ALB | 1 | ~$20 |
+| NAT Gateway | 1 | ~$32 |
 | S3 | 1 GB | ~$0.02 |
 | Lex | ~1000 req/hari | ~$5 |
-| NAT Gateway | 1 | ~$32 |
 | **Total** | | **~$144/bulan** |

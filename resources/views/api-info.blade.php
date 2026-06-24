@@ -36,7 +36,7 @@
 <nav><a href="/">Kaltim Smart Platform</a></nav>
 <div class="container">
     <h1>API Documentation</h1>
-    <p class="sub">Base URL: <code style="background:#1e293b;padding:2px 6px;border-radius:3px;">http://localhost:8080/api</code></p>
+    <p class="sub">Base URL: <code style="background:#1e293b;padding:2px 6px;border-radius:3px;">{{ config('app.url') }}/api</code></p>
 
     <div class="card">
         <h2>Response Format</h2>
