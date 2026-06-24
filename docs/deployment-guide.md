@@ -144,7 +144,19 @@ terraform output
 
 Buat satu EC2 instance secara manual menggunakan resource yang sudah dibuat Terraform.
 
-### Langkah 1 — Launch Instance
+### Langkah 1 — Buat Key Pair
+
+1. Buka **AWS Console → EC2 → Key Pairs → Create key pair**
+2. Isi:
+   - **Name:** `kaltim-key`
+   - **Key pair type:** RSA
+   - **Private key file format:** `.pem`
+3. Klik **Create key pair** — file `kaltim-key.pem` otomatis terdownload
+4. Simpan file ini di tempat aman (tidak bisa didownload ulang)
+
+> Key pair ini sebagai cadangan akses darurat. Akses utama tetap via Session Manager (tanpa perlu file `.pem`).
+
+### Langkah 2 — Launch Instance
 
 1. Buka **AWS Console → EC2 → Instances → Launch instances**
 
@@ -155,7 +167,7 @@ Buat satu EC2 instance secara manual menggunakan resource yang sudah dibuat Terr
    | **Name** | `kaltim-app-instance` |
    | **AMI** | Amazon Linux 2023 AMI (pilih yang `x86_64`) |
    | **Instance type** | `t3.medium` |
-   | **Key pair** | pilih key pair yang ada, atau buat baru (tidak wajib karena pakai Session Manager) |
+   | **Key pair** | pilih `kaltim-key` |
 
 3. **Network settings** → klik **Edit**:
    - **VPC:** pilih `kaltim-smart-platform-vpc`
@@ -168,7 +180,7 @@ Buat satu EC2 instance secara manual menggunakan resource yang sudah dibuat Terr
 
 5. Klik **Launch instance**
 
-### Langkah 2 — Tunggu Instance Ready
+### Langkah 3 — Tunggu Instance Ready
 
 1. Buka **EC2 → Instances**
 2. Tunggu instance `kaltim-app-instance` statusnya **Running** dan **2/2 checks passed** (~2 menit)
